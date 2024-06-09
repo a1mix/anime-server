@@ -32,8 +32,8 @@ export class EpisodesService {
     return this.episodeModel.findAll();
   }
 
-  async getEpisodeById(id: number): Promise<Episodes> {
-    return this.episodeModel.findOne({ where: { id } });
+  async getAnimeEpisodesByAnimeId(id: number): Promise<Episodes[]> {
+    return this.episodeModel.findAll({ where: { anime_id: id } });
   }
 
   async findAll(): Promise<Episodes[]> {

@@ -10,16 +10,15 @@ import {
   Post,
   Res,
   UploadedFile,
-  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
-import { AnyFilesInterceptor, FileInterceptor } from "@nestjs/platform-express";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { EpisodesService } from "./episodes.service";
 import { Episodes } from "./episodes.model";
-import { join } from "path";
-import { writeFile } from "fs";
+const fs = require("fs");
+const path = require("path");
 import { Roles } from "src/auth/roles-auth.decorator";
 import { UpdateEpisodeDto } from "./dto/update-episode.dto";
 import { RolesGuard } from "src/auth/roles-guard";
@@ -37,26 +36,42 @@ export class EpisodesController {
     @Body("title") title: string
   ) {
     const originalFilename = file.originalname;
-    const uploadPath = join(__dirname, "..", "uploads", originalFilename);
-    writeFile(uploadPath, file.buffer, (err) => {
-      if(err) throw new HttpException('Ошибка во время записи файла', HttpStatus.BAD_REQUEST);
-      return this.episodesService.createEpisode(file, episodeNumber, animeId, title)
-    });
+    const uploadsDir = path.join(__dirname, "..", "uploads");
+    const uploadPath = path.join(uploadsDir, originalFilename);
+
+    try {
+      // Check if the uploads directory exists
+      if (!fs.existsSync(uploadsDir)) {
+        // Create the uploads directory if it doesn't exist
+        await fs.promises.mkdir(uploadsDir, { recursive: true });
+        console.log("Created uploads directory");
+      }
+
+      // Write the file to the uploads directory
+      await fs.promises.writeFile(uploadPath, file.buffer);
+      console.log("File saved:", uploadPath);
+
+      // Call the episodesService.createEpisode method
+      return this.episodesService.createEpisode(
+        file,
+        episodeNumber,
+        animeId,
+        title
+      );
+    } catch (error) {
+      console.error("Error processing file:", error);
+      throw new HttpException(
+        "Error processing file",
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
   }
 
   @Get(":id")
-  async getEpisode(
+  async getAnimeEpisodesByAnimeId(
     @Param("id") id: number,
-    @Res() res: Response
-  ): Promise<void> {
-    const episode = await this.episodesService.getEpisodeById(id);
-    if (!episode) {
-      res.status(404).send("Episode not found");
-      return;
-    }
-
-    const filePath = `${process.cwd()}/uploads/${episode.episode_path}`;
-    res.sendFile(filePath);
+  ) {
+    return  this.episodesService.getAnimeEpisodesByAnimeId(id);
   }
 
   @Get()
@@ -64,25 +79,27 @@ export class EpisodesController {
     return this.episodesService.getEpisodes();
   }
 
-
-  @Patch(':id')
+  @Patch(":id")
   @Roles("ADMIN")
   @UseGuards(RolesGuard)
   async update(
-    @Param('id') id: number,
-    @Body() updateEpisodeDto: UpdateEpisodeDto,
+    @Param("id") id: number,
+    @Body() updateEpisodeDto: UpdateEpisodeDto
   ): Promise<[number, Episodes[]]> {
-    const [updatedCount, [updatedEpisode]] = await this.episodesService.update(id, updateEpisodeDto);
+    const [updatedCount, [updatedEpisode]] = await this.episodesService.update(
+      id,
+      updateEpisodeDto
+    );
     if (updatedCount === 0) {
-      throw new HttpException('Episode not found', HttpStatus.NOT_FOUND);
+      throw new HttpException("Episode not found", HttpStatus.NOT_FOUND);
     }
     return [updatedCount, [updatedEpisode]];
   }
 
-  @Delete(':id')
+  @Delete(":id")
   @Roles("ADMIN")
   @UseGuards(RolesGuard)
-  async remove(@Param('id') id: number): Promise<void> {
+  async remove(@Param("id") id: number): Promise<void> {
     await this.episodesService.remove(id);
   }
 }
